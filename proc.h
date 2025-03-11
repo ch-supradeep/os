@@ -1,4 +1,7 @@
 // Per-CPU state
+#define LOW_PRIORITY 3
+#define DEFAULT_PRIORITY 2
+#define HIGH_PRIORITY 1
 struct cpu {
   uchar apicid;                // Local APIC ID
   struct context *scheduler;   // swtch() here to enter scheduler
@@ -49,6 +52,9 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  uint ticks;                  
+  int fifoPosition;  
+  int priority;        
 };
 
 // Process memory is laid out contiguously, low addresses first:
@@ -56,3 +62,8 @@ struct proc {
 //   original data and bss
 //   fixed-size stack
 //   expandable heap
+
+int ticks_running(int);
+int job_position(int );
+int set_sched_priority(int );
+int get_sched_priority(int );

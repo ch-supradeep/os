@@ -37,3 +37,7 @@ void* memset(void*, int, uint);
 void* malloc(uint);
 void free(void*);
 int atoi(const char*);
+int ticks_running(int);
+int job_position(int);
+int set_sched_priority(int);
+int get_sched_priority(int);
