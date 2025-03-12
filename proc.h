@@ -54,7 +54,8 @@ struct proc {
   char name[16];               // Process name (debugging)
   uint ticks;                  
   int fifoPosition;  
-  int priority;        
+  int priority;  
+  int arrivalTime;      
 };
 
 // Process memory is laid out contiguously, low addresses first:
@@ -67,3 +68,4 @@ int ticks_running(int);
 int job_position(int );
 int set_sched_priority(int );
 int get_sched_priority(int );
+int process_metrics(void);

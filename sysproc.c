@@ -120,3 +120,10 @@ int sys_get_sched_priority(void) {
     return -1;
   return get_sched_priority(pid);
 }
+
+int sys_process_metrics(void) {
+  int pid;
+  if (argint(0, &pid) < 0)  
+    return -1;
+  return process_metrics();
+}

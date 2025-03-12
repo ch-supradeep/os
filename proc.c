@@ -7,6 +7,7 @@
 #include "proc.h"
 #include "spinlock.h"
 
+extern int sys_uptime(void);
 int fifoPosition=1;
 struct {
   struct spinlock lock;
@@ -89,12 +90,14 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
-  #ifdef FIFO
+  p->arrivalTime = ticks;
+  #ifdef SCHEDULER_FIFO
   p->fifoPosition = fifoPosition++;
+  
   #endif
-  #ifdef PRIORITY
-  p->priority = HIGH_PRIORITY
-  p->fifo_position = fifo_position++;
+  #ifdef SCHEDULER_PRIORITY
+  p->priority = HIGH_PRIORITY;
+  p->fifoPosition = fifoPosition++;
   #endif
   release(&ptable.lock);
 
@@ -336,58 +339,69 @@ scheduler(void)
 
   for(;;)
   {
-      sti();
+    sti(); // Enable interrupts
 
-      acquire(&ptable.lock);
-      for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-      {
-        if(p->state != RUNNABLE) {
-          continue;
-        }
-        #ifdef PRIORITY
-          struct proc *maxPriority = 0;
-          maxPriority = p;
-          for(struct proc *a = ptable.proc; a < &ptable.proc[NPROC]; a++) 
-          {
-            if(a->state != RUNNABLE) 
-            {
-              continue;
-            }
-            if(maxPriority->priority < a->priority) 
-            {
-              maxPriority = a;
-            }
-            else if(maxPriority->priority==a->priority&&a->fifoPosition<maxPriority->fifoPosition) {
-              maxPriority = a;
-            }
-          }
-          p = maxPriority; 
-            
-        #else
-        #ifdef FIFO
-          struct proc *firstProcess = 0;
-          if(p->pid > 1) {
-            if(firstProcess==0||(firstProcess->fifoPosition>p->fifoPosition)) {
-              firstProcess = p;
-            }
-          }
-          if(firstProcess != 0 && firstProcess->state == RUNNABLE)
-            p = firstProcess;
+    acquire(&ptable.lock);
 
-        #endif
-        #endif
-        if(p != 0)
-        {
-          c->proc = p;
-          switchuvm(p);
-          p->state = RUNNING;
-          p->ticks++;
-          swtch(&(c->scheduler), p->context);
-          switchkvm();
-          c->proc = 0;
-        }
+    #ifdef SCHEDULER_PRIORITY
+    // Priority-based scheduling: Select the process with the highest priority
+    struct proc *maxPriority = 0;
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+      if(p->state != RUNNABLE) {
+        continue;
       }
-      release(&ptable.lock);
+      if(maxPriority == 0 || p->priority < maxPriority->priority) {
+        maxPriority = p;
+      } else if(p->priority == maxPriority->priority && p->fifoPosition < maxPriority->fifoPosition) {
+        maxPriority = p; // Tiebreaker: lower fifoPosition wins
+      }
+    }
+    p = maxPriority; // Set p to the highest-priority process (or 0 if none found)
+
+    #elif defined(SCHEDULER_FIFO)
+    // FIFO scheduling: Select the process with the lowest fifoPosition
+    struct proc *firstProcess = 0;
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+      if(p->state != RUNNABLE) {
+        continue;
+      }
+      if(firstProcess == 0 || p->fifoPosition < firstProcess->fifoPosition) {
+        firstProcess = p;
+      }
+    }
+    p = firstProcess; // Set p to the earliest process (or 0 if none found)
+
+    #else
+    // Default scheduling: Round-robin (pick the first RUNNABLE process)
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+      if(p->state == RUNNABLE) {
+        break; // Found the first RUNNABLE process
+      }
+    }
+    // If no RUNNABLE process is found, p will point beyond ptable.proc[NPROC]
+    if(p >= &ptable.proc[NPROC]) {
+      p = 0; // Reset p to 0 to indicate no process to run
+    }
+
+    #endif
+
+    // If a process was selected, run it
+    if(p != 0) {
+      // Debugging: Validate kstack to avoid switchuvm panic
+      if(p->kstack == 0) {
+        cprintf("scheduler: pid %d has no kstack!\n", p->pid);
+        panic("scheduler: no kstack");
+      }
+      c->proc = p;
+      switchuvm(p);
+      p->state = RUNNING;
+      p->ticks++;
+      swtch(&(c->scheduler), p->context);
+      switchkvm();
+      c->proc = 0;
+    }
+
+    release(&ptable.lock);
   }
 }
 
@@ -591,22 +605,22 @@ int ticks_running(int pid) {
 
 
 int job_position(int pid) {
-  int position = 1;
+  cprintf("global value is %d\n",fifoPosition);
+  int position = -1;
   acquire(&ptable.lock);
-  int found = 0;
   for (struct proc *p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
-      if (p->pid == pid) {
-        found = 1;
-        break;
-      }
-      else {
-        position++;
-      }
+    if (p->pid == pid) {
+        if (p->state == RUNNABLE || p->state == RUNNING) {
+          position = p->fifoPosition;
+          break;
+        }
+        else {
+          break;
+        }
+    }
   }
   release(&ptable.lock);
-  if(found)
-    return position;
-  return -1;
+  return position;
 }
 
 int set_sched_priority(int priority) 
@@ -649,4 +663,45 @@ void display_process(void) {
     cprintf("process id is %d process name is %s process priority is %d process fifo pos is %d\n",p->pid,p->name,p->priority,p->fifoPosition);
   }
   release(&ptable.lock);
+}
+
+
+
+int process_metrics(void)
+{
+  struct proc *p;
+  int havekids, pid;
+  struct proc *curproc = myproc();
+  
+  acquire(&ptable.lock);
+  for(;;){
+    havekids = 0;
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->parent != curproc)
+        continue;
+      havekids = 1;
+      if(p->state == ZOMBIE){
+        int uptime = sys_uptime();
+        int tat = uptime - p->arrivalTime;
+        cprintf("name: %s\t ticks_running: %d\t uptime: %d turn around time: %d\n",p->name,p->ticks,uptime,tat);
+        pid = p->pid;
+        kfree(p->kstack);
+        p->kstack = 0;
+        freevm(p->pgdir);
+        p->pid = 0;
+        p->parent = 0;
+        p->name[0] = 0;
+        p->killed = 0;
+        p->state = UNUSED;
+        release(&ptable.lock);
+        return pid;
+      }
+    }
+
+    if(!havekids || curproc->killed){
+      release(&ptable.lock);
+      return -1;
+    }
+    sleep(curproc, &ptable.lock); 
+  }
 }

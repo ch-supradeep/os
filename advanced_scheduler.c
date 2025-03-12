@@ -57,10 +57,11 @@ int main()
                 exit(); 
   
         }
-        wait();
-        wait();
-        wait();
-        wait();
+        process_metrics();
+        process_metrics();
+        process_metrics();
+        process_metrics();
+
     printf(1,"Test done\n");
     exit();
 }

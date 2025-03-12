@@ -4,6 +4,6 @@
 
 int main() {
     printf(1,"hello chis\n");
-    display_process();
+    //display_process();
     exit();
 }

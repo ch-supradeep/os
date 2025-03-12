@@ -24,3 +24,4 @@
 #define SYS_job_position  23
 #define SYS_set_sched_priority 24
 #define SYS_get_sched_priority 25
+#define SYS_process_metrics 26

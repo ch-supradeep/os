@@ -107,6 +107,7 @@ extern int sys_ticks_running(void);
 extern int sys_job_position(void);
 extern int sys_set_sched_priority(void);
 extern int sys_get_sched_priority(void);
+extern int sys_process_metrics(void);
 
 static int (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -134,6 +135,7 @@ static int (*syscalls[])(void) = {
 [SYS_job_position] sys_job_position,
 [SYS_set_sched_priority] sys_set_sched_priority,
 [SYS_get_sched_priority] sys_get_sched_priority,
+[SYS_process_metrics] sys_process_metrics,
 };
 
 void

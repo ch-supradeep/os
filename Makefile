@@ -71,16 +71,22 @@ QEMU = $(shell if which qemu > /dev/null; \
 	echo "***" 1>&2; exit 1)
 endif
 
-ifndef SCHEDULER
-SCHEDULER := DEFAULT
-endif
-
 CC = $(TOOLPREFIX)gcc
 AS = $(TOOLPREFIX)gas
 LD = $(TOOLPREFIX)ld
 OBJCOPY = $(TOOLPREFIX)objcopy
 OBJDUMP = $(TOOLPREFIX)objdump
-CFLAGS = -fno-pic -static -fno-builtin -fno-strict-aliasing -O2 -Wall -MD -ggdb -m32 -Werror -fno-omit-frame-pointer -D $(SCHEDULER)
+CFLAGS = -fno-pic -static -fno-builtin -fno-strict-aliasing -O2 -Wall -MD -ggdb -m32 -Werror -fno-omit-frame-pointer
+
+# Scheduler-specific flags
+ifeq ($(SCHEDULER),FIFO)
+CFLAGS += -DSCHEDULER_FIFO
+else ifeq ($(SCHEDULER),PRIORITY)
+CFLAGS += -DSCHEDULER_PRIORITY
+else
+CFLAGS += -DSCHEDULER_DEFAULT
+endif
+
 CFLAGS += $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
 ASFLAGS = -m32 -gdwarf-2 -Wa,-divide
 # FreeBSD ld wants ``elf_i386_fbsd''
@@ -188,11 +194,12 @@ UPROGS=\
 	_sleep\
 	_uniq\
 	_find\
-	_ticks_running\
-	_tickstest\
+	_ticks_run\
+	_ticks_run_test\
 	_simple_scheduler\
 	_advanced_scheduler\
 	_display_process\
+	_job_position\
 
 fs.img: mkfs README $(UPROGS)
 	./mkfs fs.img README $(UPROGS)
